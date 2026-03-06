@@ -1,0 +1,66 @@
+id = "codeowners"
+name = "CODEOWNERS"
+description = "Display CODEOWNERS information for the current file via LSP diagnostics"
+version = "0.1.0"
+schema_version = 1
+authors = ["Camilo"]
+repository = "https://github.com/llekn/zed-codeowners"
+
+[language_servers.codeowners-lsp]
+name = "CODEOWNERS"
+languages = [
+    "Astro",
+    "Bash",
+    "C",
+    "C#",
+    "CSS",
+    "Clojure",
+    "Cpp",
+    "Dart",
+    "Dockerfile",
+    "Elixir",
+    "Elm",
+    "ERB",
+    "Erlang",
+    "GDScript",
+    "GLSL",
+    "Go",
+    "GraphQL",
+    "Haskell",
+    "HCL",
+    "HTML",
+    "Java",
+    "JavaScript",
+    "JSON",
+    "JSX",
+    "Julia",
+    "Kotlin",
+    "Lua",
+    "Markdown",
+    "Nix",
+    "OCaml",
+    "Perl",
+    "PHP",
+    "Prisma",
+    "Proto",
+    "Purescript",
+    "Python",
+    "R",
+    "Racket",
+    "Ruby",
+    "Rust",
+    "Scala",
+    "Scheme",
+    "SCSS",
+    "SQL",
+    "Svelte",
+    "Swift",
+    "TOML",
+    "TSX",
+    "TypeScript",
+    "Vue.js",
+    "WGSL",
+    "XML",
+    "YAML",
+    "Zig",
+]

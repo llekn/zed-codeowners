@@ -1,0 +1,3 @@
+name = "CODEOWNERS"
+path_suffixes = ["CODEOWNERS"]
+line_comments = ["# "]
