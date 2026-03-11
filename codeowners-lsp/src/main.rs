@@ -8,6 +8,13 @@ use tower_lsp::jsonrpc::Result;
 use tower_lsp::lsp_types::*;
 use tower_lsp::{Client, LanguageServer, LspService, Server};
 
+macro_rules! debug_log {
+    ($client:expr, $($arg:tt)*) => {
+        #[cfg(debug_assertions)]
+        $client.log_message(MessageType::LOG, format!($($arg)*)).await;
+    };
+}
+
 struct Backend {
     client: Client,
     workspace_root: RwLock<Option<PathBuf>>,
@@ -23,11 +30,15 @@ impl Backend {
         }
     }
 
-    fn load_codeowners(&self) {
-        let root = self.workspace_root.read().unwrap();
+    async fn load_codeowners(&self) {
+        let root = self.workspace_root.read().unwrap().clone();
         if let Some(root) = root.as_ref() {
+            debug_log!(self.client, "Loading CODEOWNERS from workspace: {:?}", root);
             let co = Codeowners::from_workspace(root);
+            debug_log!(self.client, "CODEOWNERS loaded: {}", co.is_some());
             *self.codeowners.write().unwrap() = co;
+        } else {
+            debug_log!(self.client, "No workspace root set");
         }
     }
 
@@ -75,8 +86,10 @@ impl Backend {
 #[tower_lsp::async_trait]
 impl LanguageServer for Backend {
     async fn initialize(&self, params: InitializeParams) -> Result<InitializeResult> {
+        debug_log!(self.client, "Initialize called, root_uri: {:?}", params.root_uri);
         if let Some(root_uri) = params.root_uri {
             if let Ok(path) = root_uri.to_file_path() {
+                debug_log!(self.client, "Workspace root set to: {:?}", path);
                 *self.workspace_root.write().unwrap() = Some(path);
             }
         }
@@ -98,11 +111,13 @@ impl LanguageServer for Backend {
     }
 
     async fn initialized(&self, _: InitializedParams) {
-        self.load_codeowners();
+        self.load_codeowners().await;
     }
 
     async fn did_open(&self, params: DidOpenTextDocumentParams) {
+        debug_log!(self.client, "did_open: {:?}", params.text_document.uri);
         let diagnostics = self.diagnose_file(&params.text_document.uri);
+        debug_log!(self.client, "Publishing {} diagnostics", diagnostics.len());
         self.client
             .publish_diagnostics(params.text_document.uri, diagnostics, None)
             .await;
@@ -112,7 +127,7 @@ impl LanguageServer for Backend {
         // If the CODEOWNERS file itself was saved, reload it
         if let Ok(path) = params.text_document.uri.to_file_path() {
             if path.file_name().map(|n| n == "CODEOWNERS").unwrap_or(false) {
-                self.load_codeowners();
+                self.load_codeowners().await;
             }
         }
 
