@@ -67,7 +67,7 @@ impl Backend {
 
         let message = match co.owners_of(&relative) {
             Some(owners) => format!("Owner: {}", owners.join(", ")),
-            None => return vec![],
+            None => "No CODEOWNERS match".to_string(),
         };
 
         vec![Diagnostic {
