@@ -15,6 +15,7 @@ languages = [
     "C#",
     "CSS",
     "Clojure",
+    "CODEOWNERS",
     "Cpp",
     "Dart",
     "Dockerfile",
