@@ -56,22 +56,48 @@ impl Codeowners {
         Codeowners { rules }
     }
 
-    /// Find owners for a file path (relative to workspace root).
-    /// Returns the owners from the last matching rule (GitHub precedence).
-    pub fn owners_of(&self, file_path: &str) -> Option<&[String]> {
-        let mut last_match: Option<&[String]> = None;
-
-        // Normalize: strip leading slash for matching
+    /// Find all matching owners for a file path (relative to workspace root).
+    /// Returns owners split into "other" (non-last matching rules) and
+    /// "effective" (last matching rule, which GitHub considers the actual owner).
+    pub fn all_owners_of(&self, file_path: &str) -> Option<AllOwners> {
         let path = file_path.strip_prefix('/').unwrap_or(file_path);
 
-        for rule in &self.rules {
-            if rule.matcher.is_match(path) {
-                last_match = Some(&rule.owners);
+        let matching_rules: Vec<&Rule> = self
+            .rules
+            .iter()
+            .filter(|rule| rule.matcher.is_match(path))
+            .collect();
+
+        if matching_rules.is_empty() {
+            return None;
+        }
+
+        let (last, rest) = matching_rules.split_last().unwrap();
+        let effective: Vec<String> = last.owners.clone();
+
+        let mut other = Vec::new();
+        let mut seen = std::collections::HashSet::new();
+        for owner in &effective {
+            seen.insert(owner.as_str());
+        }
+        for rule in rest {
+            for owner in &rule.owners {
+                if seen.insert(owner.as_str()) {
+                    other.push(owner.clone());
+                }
             }
         }
 
-        last_match
+        Some(AllOwners { other, effective })
     }
+}
+
+#[derive(Debug, PartialEq)]
+pub struct AllOwners {
+    /// Owners from all matching rules except the last, deduplicated
+    pub other: Vec<String>,
+    /// Owners from the last matching rule (GitHub's effective owners)
+    pub effective: Vec<String>,
 }
 
 /// Build a glob matcher from a CODEOWNERS pattern.
@@ -121,33 +147,45 @@ docs/* @docs-team
 "#;
         let co = Codeowners::parse(content);
 
-        // Global fallback
+        // Global fallback — only one rule matches
         assert_eq!(
-            co.owners_of("random-file.txt"),
-            Some(["@global-owner".to_string()].as_slice())
+            co.all_owners_of("random-file.txt"),
+            Some(AllOwners {
+                other: vec![],
+                effective: vec!["@global-owner".into()],
+            })
         );
 
-        // Frontend override
+        // Frontend override — matches * and *.js
         assert_eq!(
-            co.owners_of("app.js"),
-            Some(["@frontend-team".to_string()].as_slice())
+            co.all_owners_of("app.js"),
+            Some(AllOwners {
+                other: vec!["@global-owner".into()],
+                effective: vec!["@frontend-team".into()],
+            })
         );
 
-        // Backend
+        // Backend — matches * and /src/api/
         assert_eq!(
-            co.owners_of("src/api/handler.rs"),
-            Some(["@backend-team".to_string()].as_slice())
+            co.all_owners_of("src/api/handler.rs"),
+            Some(AllOwners {
+                other: vec!["@global-owner".into()],
+                effective: vec!["@backend-team".into()],
+            })
         );
 
-        // Docs
+        // Docs — matches * and docs/*
         assert_eq!(
-            co.owners_of("docs/readme.md"),
-            Some(["@docs-team".to_string()].as_slice())
+            co.all_owners_of("docs/readme.md"),
+            Some(AllOwners {
+                other: vec!["@global-owner".into()],
+                effective: vec!["@docs-team".into()],
+            })
         );
     }
 
     #[test]
-    fn test_last_match_wins() {
+    fn test_all_matching_rules() {
         let content = r#"
 * @fallback
 *.rs @rust-team
@@ -155,14 +193,22 @@ docs/* @docs-team
 "#;
         let co = Codeowners::parse(content);
 
+        // src/main.rs matches all three rules
         assert_eq!(
-            co.owners_of("src/main.rs"),
-            Some(["@lead-dev".to_string()].as_slice())
+            co.all_owners_of("src/main.rs"),
+            Some(AllOwners {
+                other: vec!["@fallback".into(), "@rust-team".into()],
+                effective: vec!["@lead-dev".into()],
+            })
         );
 
+        // src/lib.rs matches * and *.rs
         assert_eq!(
-            co.owners_of("src/lib.rs"),
-            Some(["@rust-team".to_string()].as_slice())
+            co.all_owners_of("src/lib.rs"),
+            Some(AllOwners {
+                other: vec!["@fallback".into()],
+                effective: vec!["@rust-team".into()],
+            })
         );
     }
 
@@ -171,7 +217,7 @@ docs/* @docs-team
         let content = "*.js @js-team\n";
         let co = Codeowners::parse(content);
 
-        assert_eq!(co.owners_of("main.rs"), None);
+        assert_eq!(co.all_owners_of("main.rs"), None);
     }
 
     #[test]
@@ -180,8 +226,29 @@ docs/* @docs-team
         let co = Codeowners::parse(content);
 
         assert_eq!(
-            co.owners_of("main.rs"),
-            Some(["@alice".to_string(), "@bob".to_string()].as_slice())
+            co.all_owners_of("main.rs"),
+            Some(AllOwners {
+                other: vec![],
+                effective: vec!["@alice".into(), "@bob".into()],
+            })
+        );
+    }
+
+    #[test]
+    fn test_dedup_across_rules() {
+        let content = r#"
+* @shared-owner @team-a
+*.rs @shared-owner @team-b
+"#;
+        let co = Codeowners::parse(content);
+
+        // @shared-owner appears in both rules but should only show in effective (last rule)
+        assert_eq!(
+            co.all_owners_of("main.rs"),
+            Some(AllOwners {
+                other: vec!["@team-a".into()],
+                effective: vec!["@shared-owner".into(), "@team-b".into()],
+            })
         );
     }
 }

@@ -65,8 +65,21 @@ impl Backend {
             None => return vec![],
         };
 
-        let message = match co.owners_of(&relative) {
-            Some(owners) => format!("Owner: {}", owners.join(", ")),
+        let message = match co.all_owners_of(&relative) {
+            Some(owners) => {
+                let mut parts: Vec<String> = owners
+                    .other
+                    .iter()
+                    .map(|o| o.to_string())
+                    .collect();
+                parts.extend(
+                    owners
+                        .effective
+                        .iter()
+                        .map(|o| format!("[{}]", o)),
+                );
+                format!("Owner: {}", parts.join(", "))
+            }
             None => "No CODEOWNERS match".to_string(),
         };
 
