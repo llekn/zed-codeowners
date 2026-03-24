@@ -117,8 +117,15 @@ fn build_matcher(pattern: &str) -> Option<GlobMatcher> {
         // Directory pattern: match everything inside it
         format!("{pat}**")
     } else if !anchored && !pat.contains('/') {
-        // No slash and not anchored: matches at any depth
-        format!("**/{pat}")
+        // No slash and not anchored:
+        // Wildcard patterns (e.g. *.js) match at any depth; literal filenames
+        // (e.g. README.md) are treated as root-anchored, same as /README.md.
+        let has_wildcard = pat.contains('*') || pat.contains('?') || pat.contains('[') || pat.contains('{');
+        if has_wildcard {
+            format!("**/{pat}")
+        } else {
+            pat.to_string()
+        }
     } else {
         // Anchored to root or has an internal slash: use as-is
         pat.to_string()
@@ -229,6 +236,24 @@ docs/* @docs-team
         );
 
         // Should NOT match a nested README.md (anchored to root)
+        assert_eq!(co.all_owners_of("docs/README.md"), None);
+    }
+
+    #[test]
+    fn test_unanchored_literal_is_root_only() {
+        let content = "README.md @team\n";
+        let co = Codeowners::parse(content);
+
+        // Should match the top-level README.md
+        assert_eq!(
+            co.all_owners_of("README.md"),
+            Some(AllOwners {
+                other: vec![],
+                effective: vec!["@team".into()],
+            })
+        );
+
+        // Should NOT match a nested README.md (treated as root-anchored)
         assert_eq!(co.all_owners_of("docs/README.md"), None);
     }
 
